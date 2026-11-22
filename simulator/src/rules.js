@@ -15,8 +15,8 @@ export function evaluate(state) {
     ? "needs-information"
     : age < 18
       ? "ineligible"
-      : f.taxResidency !== "Canada"
-        ? "needs-information"
+      : f.taxResidency === "Non-resident"
+        ? "ineligible"
         : "eligible";
   const contributionRoute = ["Internal cash contribution", "External cash contribution"].includes(state.fundingMethod);
   const roomConfirmed = Boolean(f.reportedContributionRoom && f.reportedContributionRoom.trim() !== "" && f.reportedContributionRoom !== "Unknown");
