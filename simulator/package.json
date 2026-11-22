@@ -1,0 +1,8 @@
+{
+  "name": "ontario-advisor-practice-simulator",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.js"
+  }
+}
