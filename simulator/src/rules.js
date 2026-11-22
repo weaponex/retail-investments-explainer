@@ -17,12 +17,16 @@ export function evaluate(state) {
       ? "ineligible"
       : f.taxResidency !== "Canada"
         ? "needs-information"
-      : "eligible";
+        : "eligible";
   const contributionRoute = ["Internal cash contribution", "External cash contribution"].includes(state.fundingMethod);
-  const fundingStatus = contributionRoute && (f.reportedContributionRoom === "Unknown" || f.taxResidency !== "Canada") ? "needs-information" : "ready";
+  const roomConfirmed = Boolean(f.reportedContributionRoom && f.reportedContributionRoom.trim() !== "" && f.reportedContributionRoom !== "Unknown");
+  const fundingStatus = contributionRoute && (!roomConfirmed || f.taxResidency !== "Canada") ? "needs-information" : "ready";
   const followUpRequired = f.thirdParty === "Yes" || f.pepStatus === "Yes" || f.hioStatus === "Yes";
   let identityStatus = state.identityMethod && state.identityResult === "Passed" ? "complete" : "needs-information";
   if (state.identityResult === "Follow-up required" || (followUpRequired && !state.enhancedReviewCompleted)) identityStatus = "follow-up";
+  const needsPresent = Boolean(f.goal && Number(f.horizonMonths) > 0 && f.riskTolerance && f.riskTolerance !== "Unknown" &&
+    f.riskCapacity && f.riskCapacity !== "Unknown" && f.investmentKnowledge && f.investmentKnowledge !== "Unknown" &&
+    String(f.annualIncome ?? "").trim() !== "" && String(f.netWorth ?? "").trim() !== "" && String(f.financialAssets ?? "").trim() !== "" && f.liabilities);
   const selected = products.find((p) => p.id === state.selectedProductId) || null;
   const reasons = [];
   let decisionStatus = selected ? "allowed" : "needs-information";
@@ -33,18 +37,26 @@ export function evaluate(state) {
     decisionStatus = "needs-information";
     reasons.push("This product is not configured for the selected account type.");
   }
-  const needsPresent = Boolean(f.goal && f.horizonMonths && f.riskTolerance && f.riskCapacity && f.investmentKnowledge);
   if (selected && selected.type === "Mutual fund") {
     sourceIds = [...new Set([...sourceIds, "SRC-CIRO-MFD-KYC", "SRC-CIRO-MFD-SUIT"])];
     if (!needsPresent || !state.mutualFundKycConfirmed) {
       decisionStatus = "needs-information";
       reasons.push("Complete and confirm the mutual-fund KYC conversation before considering a recommendation.");
     }
-    if (state.scenarioId === "TFSA-LONG-01" && selected.id === "MF-BALANCED" &&
-        f.riskTolerance === "Low" && f.investmentKnowledge === "Limited") {
+    if (f.investmentKnowledge === "Limited" && !state.mutualFundUnderstandingConfirmed) {
+      decisionStatus = "needs-information";
+      reasons.push("Pause to explain that mutual-fund values can fall and returns are not guaranteed. Continue only after the client can describe those risks in their own words.");
+      sourceIds.push("SRC-BANK-TRAINING-RULES");
+    }
+    if (f.riskTolerance === "Low" && f.riskCapacity === "Low") {
       decisionStatus = "training-mismatch";
-      reasons.push("Low comfort with losses and limited mutual-fund knowledge conflict with this fictional medium-risk example.");
-      alternatives = ["MF-CONSERVATIVE"];
+      reasons.push("Both willingness to accept loss and financial capacity for loss are low in this scenario. The fictional Release 1 rule blocks mutual-fund choices and points to a lower-volatility deposit discussion.");
+      alternatives = ["GIC-CASH-1Y"];
+      sourceIds.push("SRC-BANK-TRAINING-RULES");
+    } else if (selected.id === "MF-BALANCED" && (f.riskTolerance === "Low" || f.riskCapacity === "Low")) {
+      decisionStatus = "training-mismatch";
+      reasons.push("The balanced fund's fictional medium-risk profile conflicts with at least one low risk-profile factor. Discuss a lower-risk option and revisit the client's needs.");
+      alternatives = ["MF-CONSERVATIVE", "GIC-CASH-1Y"];
       sourceIds.push("SRC-BANK-TRAINING-RULES");
     }
   }
@@ -55,8 +67,7 @@ export function evaluate(state) {
     alternatives = ["GIC-CASH-1Y"];
     sourceIds.push("SRC-BANK-TRAINING-RULES", "SRC-BANK-GIC-TERMS");
   }
-  const orderReady = registrationStatus === "eligible" && fundingStatus === "ready" &&
-    identityStatus === "complete" && decisionStatus === "allowed" &&
-    (!selected || selected.type !== "Mutual fund" || state.mutualFundKycConfirmed);
-  return { registrationStatus, fundingStatus, identityStatus, decisionStatus, selected, reasons, sourceIds: [...new Set(sourceIds)], alternatives, orderReady };
+  const orderReady = registrationStatus === "eligible" && fundingStatus === "ready" && identityStatus === "complete" &&
+    needsPresent && decisionStatus === "allowed" && (!selected || selected.type !== "Mutual fund" || state.mutualFundKycConfirmed);
+  return { registrationStatus, fundingStatus, identityStatus, needsPresent, decisionStatus, selected, reasons, sourceIds: [...new Set(sourceIds)], alternatives, orderReady };
 }
