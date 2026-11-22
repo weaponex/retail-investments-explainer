@@ -1,6 +1,6 @@
 export function createSession(scenario) {
   return {
-    scenarioId: scenario.id, scenarioVersion: "1.0.0", ruleVersion: "1.1.0",
+    scenarioId: scenario.id, scenarioVersion: "1.0.0", ruleVersion: "1.2.0",
     accountType: "TFSA", step: 1, facts: structuredClone(scenario.facts),
     fundingMethod: scenario.fundingMethod, identityMethod: "", identityResult: "",
     enhancedReviewCompleted: false, mutualFundKycConfirmed: false, mutualFundUnderstandingConfirmed: false, selectedProductId: "",
