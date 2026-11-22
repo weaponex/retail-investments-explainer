@@ -70,3 +70,16 @@
 .product-fit-hint.warning{background:#fff5e4;border-color:#dbad58;color:#63420f}
 .product-fit-hint.info{background:#f1f4f6;border-color:#d4dde3;color:#465d6c}
 .callout.info,.decision-box.info{background:#f1f4f6;border-color:#d4dde3;color:#465d6c}
+.info-modal{width:min(720px,calc(100vw - 32px));max-width:none;max-height:min(82vh,860px);overflow:auto;padding:24px;border:1px solid #cbd9e2;border-radius:14px;background:#fff;color:#162b3b;box-shadow:0 24px 80px #102c3e40}
+.info-modal::backdrop{background:#102b3f88;backdrop-filter:blur(2px)}
+.info-modal-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;border-bottom:1px solid var(--line);padding-bottom:14px}
+.info-modal-heading h2{font-size:25px;color:var(--navy);margin:4px 0 0}
+.info-modal-copy{font-size:16px;line-height:1.65;color:#314d62;margin:17px 0 20px}
+.info-modal-sources{border-top:1px solid var(--line);padding-top:13px}
+.info-modal-sources h3{font-size:16px;margin:0 0 8px}
+.info-modal .source-item{font-size:13px}
+.info-modal .source-type{font-size:10px}
+.info-modal .source-item strong{font-size:13px}
+.info-modal .source-item small,.info-modal .source-item p{font-size:12px}
+.info-modal .source-item a,.info-modal .fictional-label{font-size:12px}
+.info-modal .icon-button{min-width:40px;min-height:40px;border:1px solid var(--line);border-radius:8px;background:#f8fafb}

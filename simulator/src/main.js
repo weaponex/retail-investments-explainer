@@ -8,7 +8,7 @@ const root = document.querySelector("#app");
 const restartButton = document.querySelector("#restart-button");
 const steps = ["Scenario", "Account", "Identity / AML", "Needs / KYC", "Product fit", "Review / service"];
 let state = null;
-let explanationOpen = false;
+let activeInfo = null;
 const fmt = (s, ...values) => s.replace(/~(\d+)~/g, (_, n) => values[Number(n)] ?? "");
 const esc = (v = "") => String(v).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[c]));
 const money = (v) => new Intl.NumberFormat("en-CA", { style:"currency", currency:"CAD", maximumFractionDigits:2 }).format(Number(v) || 0);
@@ -59,7 +59,7 @@ function go(step) {
     render(); return;
   }
   state.step = step;
-  explanationOpen = false;
+  activeInfo = null;
   addEvent("advisor", "Opened " + steps[step] + ".");
   render();
 }
@@ -74,9 +74,26 @@ function sourceCards(ids) {
 function callout(title, text, type) {
   return fmt("<div class='callout ~0~'><strong>~1~</strong><p>~2~</p></div>", type || "info", esc(title), esc(text));
 }
-function explainer(title, text, ids) {
-  if (!explanationOpen) return "";
-  return fmt("<section class='explainer-panel'><div class='panel-heading'><div><span class='eyebrow'>Why this matters</span><h3>~0~</h3></div><button type='button' class='icon-button' data-explain aria-label='Close explanation'>×</button></div><p>~1~</p>~2~</section>", esc(title), esc(text), sourceCards(ids));
+const infoTopics = {
+  registration: { title: "Why these fields?", text: "Capture the client's identity, date of birth, SIN reference and tax residency for the TFSA application. The issuer may need these details to establish and register the plan. This practice screen uses fictional values and does not validate identity or submit a registration.", sourceIds: ["SRC-CRA-TFSA-OPEN"] },
+  funding: { title: "Contribution room and funding", text: "A TFSA contribution and a direct TFSA-to-TFSA transfer are different routes. Contribution room depends on the individual's account and contribution history; this simulator neither calculates it nor checks CRA records. For the cash contribution scenario, confirm the client's reported room before recording a simulated order.", sourceIds: ["SRC-CRA-TFSA-ROOM", "SRC-CRA-TFSA-OPEN"] },
+  identity: { title: "Identity and AML checks", text: "Select an identity-verification method that fits the fictional scenario, then record its authored result. FINTRAC's available methods and related obligations depend on the reporting entity and circumstances. PEP/HIO or third-party answers trigger the practice follow-up here; they are not automatic reasons to refuse service. Nothing is verified externally.", sourceIds: ["SRC-FINTRAC-ID", "SRC-FINTRAC-PEP-HIO"] },
+  kyc: { title: "Why collect KYC?", text: "Build a coherent picture of the client's financial circumstances, needs and objectives, knowledge, risk tolerance, risk capacity and time horizon. Reconcile inconsistent answers and keep the recorded profile current. The client confirmation and teach-back controls are simulated learning steps.", sourceIds: ["SRC-CIRO-MFD-KYC", "SRC-CIRO-MFD-SUIT"] },
+  productFit: { title: "How are options checked?", text: "Each option is evaluated against the selected account, stated liquidity need, investment knowledge and risk profile. Amber cards are shown so the learner can inspect a mismatch; selecting one opens a warning and blocks progression. These specific product gates are fictional training rules, not universal legal prohibitions.", sourceIds: ["SRC-CIRO-MFD-SUIT", "SRC-BANK-TRAINING-RULES"] },
+  review: { title: "Review and service", text: "Explain the product's fictional terms, access, maturity date and value, fees, and what is or is not guaranteed. Confirm the client understands before recording the practice order. The simulator records only an in-memory event; it does not open an account or execute a transaction.", sourceIds: ["SRC-BANK-GIC-TERMS", "SRC-CIRO-MFD-SUIT"] }
+};
+function explainer() { return ""; }
+function closeInfoModal() {
+  const key = activeInfo;
+  activeInfo = null;
+  render();
+  const trigger = Array.from(root.querySelectorAll("[data-info]")).find((button) => button.dataset.info === key);
+  trigger?.focus();
+}
+function infoModal() {
+  const topic = infoTopics[activeInfo];
+  if (!topic) return "";
+  return fmt("<dialog id='info-modal' class='info-modal' aria-labelledby='info-modal-title' aria-describedby='info-modal-copy'><div class='info-modal-heading'><div><span class='eyebrow'>Advisor reference</span><h2 id='info-modal-title'>~0~</h2></div><button type='button' class='icon-button' data-modal-close aria-label='Close explanation'>×</button></div><p id='info-modal-copy' class='info-modal-copy'>~1~</p><div class='info-modal-sources'><h3>Sources and notes</h3>~2~</div></dialog>", esc(topic.title), esc(topic.text), sourceCards(topic.sourceIds));
 }
 function horizon(months) {
   const n = Number(months) || 0;
@@ -117,10 +134,17 @@ function renderShell(content) {
       statusPanel(), state.timeline.length, events, esc(state.facts.goal), horizon(state.facts.horizonMonths), esc(state.facts.riskTolerance), esc(state.facts.riskCapacity), esc(state.facts.investmentKnowledge),
       state.facts.liquidityNeedAmount ? money(state.facts.liquidityNeedAmount) + " by month " + esc(state.facts.liquidityNeedMonths) : "No near-term need reported");
   }
-  root.innerHTML = progress + fmt("<div class='~0~'><section class='main-panel'>~1~</section>~2~</div>", state ? "workspace-grid" : "", content, timeline);
+  root.innerHTML = progress + fmt("<div class='~0~'><section class='main-panel'>~1~</section>~2~</div>", state ? "workspace-grid" : "", content, timeline) + (activeInfo ? infoModal() : "");
   restartButton.disabled = !state;
   root.querySelectorAll("[data-step]").forEach((b) => b.addEventListener("click", () => go(Number(b.dataset.step))));
-  root.querySelectorAll("[data-explain]").forEach((b) => b.addEventListener("click", () => { explanationOpen = !explanationOpen; render(); }));
+  root.querySelectorAll("[data-info]").forEach((b) => b.addEventListener("click", () => { activeInfo = b.dataset.info; render(); }));
+  const dialog = root.querySelector("#info-modal");
+  if (dialog) {
+    dialog.showModal();
+    dialog.querySelector("[data-modal-close]").addEventListener("click", closeInfoModal);
+    dialog.addEventListener("cancel", (event) => { event.preventDefault(); closeInfoModal(); });
+    dialog.addEventListener("click", (event) => { if (event.target === dialog) closeInfoModal(); });
+  }
 }
 function render() {
   if (!state) {
@@ -151,7 +175,7 @@ function accountView() {
     ? callout("Contribution room is not confirmed","Continue the account-opening conversation, but do not simulate this contribution until the client confirms their room.","warning") : "";
   const residencyMessage = f.taxResidency === "Other"
     ? callout("Check the non-resident path","CRA guidance notes that a non-resident may hold a TFSA but cannot make tax-free contributions. Confirm the issuer's account process; this simulation will not allow a cash contribution on this answer.","warning") : "";
-  const html = fmt("<div class='screen-heading'><div><span class='eyebrow'>1 · Registration and funding</span><h2>Open the TFSA</h2><p>Capture registration facts first. Account eligibility and contribution room are separate checks.</p></div><button type='button' class='link-button' data-explain>Why these fields?</button></div><div class='account-type-row'><label for='account-type'>Account type</label><select id='account-type'><option selected>TFSA · enabled · Release 1</option>~0~</select></div>~1~<div class='form-grid'><label>Legal name<input data-fact='legalName' value='~2~'></label><label>Date of birth<input data-fact='dateOfBirth' type='date' value='~3~'><small>Fictional scenario age: ~4~.</small></label><label>SIN reference (fictional)<input data-fact='sinToken' value='~5~'><small>Simulator token only; not a Canadian SIN.</small></label><label>Residential address<input data-fact='residentialAddress' value='~6~'></label><label>Tax residency<select data-fact='taxResidency'>~7~</select></label><label>Other tax residencies / TIN, if applicable<input data-fact='foreignTaxResidencies' value='~8~'></label></div><div class='section-divider'><span>Funding</span><button type='button' class='link-button' data-explain>Contribution room and funding</button></div><div class='form-grid'><label>Funding method<select id='funding-method'>~9~</select></label><label>~10~<input data-fact='reportedContributionRoom' value='~11~'><small>The simulator does not connect to CRA or calculate room.</small></label><label>Amount to fund<input data-fact='investmentAmount' type='number' min='0' step='100' value='~12~'></label><label>Other institution / masked reference<input data-fact='fundingReference' value='~13~' placeholder='Conditional on route'></label></div>~14~~15~~16~<div class='screen-actions'><span class='field-note'>All account and funding actions are simulated.</span><button class='primary-button' id='to-identity'>Continue to identity / AML →</button></div>",
+  const html = fmt("<div class='screen-heading'><div><span class='eyebrow'>1 · Registration and funding</span><h2>Open the TFSA</h2><p>Capture registration facts first. Account eligibility and contribution room are separate checks.</p></div><button type='button' class='link-button' data-info='registration'>Why these fields?</button></div><div class='account-type-row'><label for='account-type'>Account type</label><select id='account-type'><option selected>TFSA · enabled · Release 1</option>~0~</select></div>~1~<div class='form-grid'><label>Legal name<input data-fact='legalName' value='~2~'></label><label>Date of birth<input data-fact='dateOfBirth' type='date' value='~3~'><small>Fictional scenario age: ~4~.</small></label><label>SIN reference (fictional)<input data-fact='sinToken' value='~5~'><small>Simulator token only; not a Canadian SIN.</small></label><label>Residential address<input data-fact='residentialAddress' value='~6~'></label><label>Tax residency<select data-fact='taxResidency'>~7~</select></label><label>Other tax residencies / TIN, if applicable<input data-fact='foreignTaxResidencies' value='~8~'></label></div><div class='section-divider'><span>Funding</span><button type='button' class='link-button' data-info='funding'>Contribution room and funding</button></div><div class='form-grid'><label>Funding method<select id='funding-method'>~9~</select></label><label>~10~<input data-fact='reportedContributionRoom' value='~11~'><small>The simulator does not connect to CRA or calculate room.</small></label><label>Amount to fund<input data-fact='investmentAmount' type='number' min='0' step='100' value='~12~'></label><label>Other institution / masked reference<input data-fact='fundingReference' value='~13~' placeholder='Conditional on route'></label></div>~14~~15~~16~<div class='screen-actions'><span class='field-note'>All account and funding actions are simulated.</span><button class='primary-button' id='to-identity'>Continue to identity / AML →</button></div>",
     laterTypes, r.registrationStatus === "eligible" ? callout("Registration facts complete","The scenario's TFSA opening checks pass. This does not determine contribution room.","success") : r.registrationStatus === "ineligible" ? callout("Registration needs a different path","Current answers do not meet this scenario's TFSA opening check.","warning") : callout("Complete the registration facts","Check the amber action panel for required account fields.","warning"),
     esc(f.legalName), esc(f.dateOfBirth), esc(f.age), esc(f.sinToken), esc(f.residentialAddress),
     options(["Canada","Other","Unknown"], f.taxResidency), esc(f.foreignTaxResidencies), fundingOptions,
@@ -165,7 +189,7 @@ function identityView() {
   const methods=["Government-issued photo ID","Credit file","Dual-process","Affiliate or member","Reliance"].map((x)=>fmt("<option value='~0~' ~1~>~0~</option>",x,state.identityMethod===x?"selected":"")).join("");
   const pepFollow=f.pepStatus==="Yes"||f.hioStatus==="Yes"||f.thirdParty==="Yes";
   const extra=pepFollow ? "<label class='check-label follow-up'><input id='enhanced-review' type='checkbox' " + (state.enhancedReviewCompleted?"checked":"") + "> I completed the scenario's required follow-up conversation</label>" : "";
-  return fmt("<div class='screen-heading'><div><span class='eyebrow'>2 · Identity and account controls</span><h2>Confirm who the client is</h2><p>Choose a simulated method and record required scenario follow-up.</p></div><button class='link-button' data-explain>About identity checks</button></div>~0~<div class='form-grid'><label>Occupation<input data-fact='occupation' value='~1~'></label><label>Employer<input data-fact='employer' value='~2~'></label><label>Employer business address<input data-fact='employerAddress' value='~3~'></label><label>Identity verification method<select id='identity-method'><option value=''>Choose a method</option>~4~</select></label><label>Fictional method result<select id='identity-result'><option value=''>Choose result</option>~5~</select><small>Authored scenario result, not real verification.</small></label></div><fieldset class='fieldset-card'><legend>Account and relationship questions</legend><div class='form-grid'><label>Someone else directing or benefiting?~6~</label><label>PEP / HIO status~7~</label><label>Related or close associate status~8~</label></div></fieldset>~9~~10~~11~~12~<div class='screen-actions'><button class='secondary-button' data-back>← Back to account</button><button class='primary-button' id='to-needs'>Continue to needs / KYC →</button></div>",
+  return fmt("<div class='screen-heading'><div><span class='eyebrow'>2 · Identity and account controls</span><h2>Confirm who the client is</h2><p>Choose a simulated method and record required scenario follow-up.</p></div><button class='link-button' data-info='identity'>About identity checks</button></div>~0~<div class='form-grid'><label>Occupation<input data-fact='occupation' value='~1~'></label><label>Employer<input data-fact='employer' value='~2~'></label><label>Employer business address<input data-fact='employerAddress' value='~3~'></label><label>Identity verification method<select id='identity-method'><option value=''>Choose a method</option>~4~</select></label><label>Fictional method result<select id='identity-result'><option value=''>Choose result</option>~5~</select><small>Authored scenario result, not real verification.</small></label></div><fieldset class='fieldset-card'><legend>Account and relationship questions</legend><div class='form-grid'><label>Someone else directing or benefiting?~6~</label><label>PEP / HIO status~7~</label><label>Related or close associate status~8~</label></div></fieldset>~9~~10~~11~~12~<div class='screen-actions'><button class='secondary-button' data-back>← Back to account</button><button class='primary-button' id='to-needs'>Continue to needs / KYC →</button></div>",
     callout("Simulation only","No document, credit file, screening result, or external identity service is accessed."),
     esc(f.occupation),esc(f.employer),esc(f.employerAddress),methods,
     options(["Passed","Follow-up required"],state.identityResult),
@@ -185,7 +209,7 @@ function needsView() {
   const select=(label,key,values)=>fmt("<label>~0~<select data-fact='~1~'>~2~</select></label>",label,key,options(values,f[key]));
   const conflict=f.riskTolerance!==f.riskCapacity?callout("Discuss the difference","The client reports "+f.riskTolerance.toLowerCase()+" willingness to accept losses and "+f.riskCapacity.toLowerCase()+" ability to withstand losses. Ask what matters most before forming a profile.","warning"):"";
   const teachback=f.investmentKnowledge==="Limited"?"<label class='check-label confirm-check'><input id='mf-understanding' type='checkbox' "+(state.mutualFundUnderstandingConfirmed?"checked":"")+"> After an explanation, client can describe that mutual funds can lose value and returns are not guaranteed. <small>Scenario teach-back; this is not a waiver or guarantee of suitability.</small></label>":"";
-  return fmt("<div class='screen-heading'><div><span class='eyebrow'>3 · Understand the client</span><h2>Discuss needs and KYC</h2><p>Check whether goals, finances, knowledge and risk answers fit together.</p></div><button class='link-button' data-explain>Why collect KYC?</button></div><div class='client-quote'><span>Client says</span><blockquote>“~0~”</blockquote></div><div class='form-grid'>~1~~2~~3~~4~</div>~5~~6~~7~~8~<div class='screen-actions'><button class='secondary-button' data-back>← Back to identity</button><button class='primary-button' id='to-products'>Review product fit →</button></div>",
+  return fmt("<div class='screen-heading'><div><span class='eyebrow'>3 · Understand the client</span><h2>Discuss needs and KYC</h2><p>Check whether goals, finances, knowledge and risk answers fit together.</p></div><button class='link-button' data-info='kyc'>Why collect KYC?</button></div><div class='client-quote'><span>Client says</span><blockquote>“~0~”</blockquote></div><div class='form-grid'>~1~~2~~3~~4~</div>~5~~6~~7~~8~<div class='screen-actions'><button class='secondary-button' data-back>← Back to identity</button><button class='primary-button' id='to-products'>Review product fit →</button></div>",
     esc(activeScenario().prompts.needs),fields,
     select("Investment knowledge","investmentKnowledge",["Limited","Basic","Good","Extensive"]),
     select("Risk tolerance · willingness to accept loss","riskTolerance",["Low","Moderate","High","Unknown"]),
@@ -216,7 +240,7 @@ function productView() {
   } else if(p) notice=fmt("<section class='decision-box success'><div class='decision-label'>Scenario check passed</div><h3>~0~ can proceed to client review.</h3><p>This reflects the configured scenario rules; it is not personalized advice.</p>~1~</section>",esc(p.name),sourceCards(check.sourceIds));
   const summary=fmt("<div class='client-summary-strip'><div><small>Goal</small><strong>~0~</strong></div><div><small>Horizon</small><strong>~1~</strong></div><div><small>Risk tolerance / capacity</small><strong>~2~ / ~3~</strong></div><div><small>Liquidity need</small><strong>~4~</strong></div><button class='text-button' id='edit-needs'>Edit client facts</button></div>",
     esc(state.facts.goal),horizon(state.facts.horizonMonths),esc(state.facts.riskTolerance),esc(state.facts.riskCapacity),state.facts.liquidityNeedAmount?money(state.facts.liquidityNeedAmount)+" in "+state.facts.liquidityNeedMonths+" mo.":"None reported");
-  return fmt("<div class='screen-heading'><div><span class='eyebrow'>4 · Compare and discuss</span><h2>Product fit</h2><p>Options reflect the client profile. Amber cards show a mismatch or required conversation; selecting one explains the issue, but it cannot proceed to review.</p></div><button class='link-button' data-explain>How are options checked?</button></div>~0~<div class='product-grid'>~1~</div>~2~~3~<div class='screen-actions'><button class='secondary-button' data-back>← Back to needs / KYC</button><button class='primary-button' id='to-review' ~4~>Continue to client review →</button></div>",
+  return fmt("<div class='screen-heading'><div><span class='eyebrow'>4 · Compare and discuss</span><h2>Product fit</h2><p>Options reflect the client profile. Amber cards show a mismatch or required conversation; selecting one explains the issue, but it cannot proceed to review.</p></div><button class='link-button' data-info='productFit'>How are options checked?</button></div>~0~<div class='product-grid'>~1~</div>~2~~3~<div class='screen-actions'><button class='secondary-button' data-back>← Back to needs / KYC</button><button class='primary-button' id='to-review' ~4~>Continue to client review →</button></div>",
     summary,products.filter((x)=>x.accountTypes.includes(state.accountType)).map((x)=>productCard(x,check)).join(""),
     p?notice:"<p class='field-note'>Select a product to see its scenario check.</p>",
     explainer("How product fit is checked","The simulator uses account compatibility, client facts, product terms, and explicit scenario rules. It does not rank by compensation or turn a teaching gate into a legal rule.",["SRC-CIRO-MFD-SUIT","SRC-BANK-TRAINING-RULES"]),
@@ -241,7 +265,7 @@ function reviewView() {
     :callout("No product selected","Return to product fit and choose an option that passes the scenario check.","warning");
   const confirmation=state.transaction?fmt("<section class='confirmation-card'><span class='success-mark'>✓</span><div><span class='eyebrow'>Fictional confirmation</span><h3>Practice transaction recorded</h3><p>Reference <strong>~0~</strong> · ~1~ · ~2~</p><p>No account, order or money movement occurred.</p></div></section><section class='service-card'><h3>Continue the service conversation</h3><p>Discuss the next service checkpoint, product maturity or redemption timing, and when client facts may need review.</p><button class='secondary-button' id='service-event'>Add service note to timeline</button></section>",esc(state.transaction.reference),esc(state.transaction.productName),money(state.transaction.amount)):"";
   const action=state.transaction?"<button class='primary-button' id='finish-scenario'>Finish and recap →</button>":fmt("<button class='primary-button' id='simulate-order' ~0~>Record simulated order →</button>",check.orderReady&&state.reviewConfirmed?"":"disabled");
-  return fmt("<div class='screen-heading'><div><span class='eyebrow'>5 · Review / service</span><h2>Review with the client</h2><p>Explain terms in plain language, confirm understanding, then create a fictional confirmation.</p></div><button class='link-button' data-explain>Review rule sources</button></div>~0~~1~~2~<div class='screen-actions'><button class='secondary-button' data-back>← Back to product fit</button>~3~</div>",
+  return fmt("<div class='screen-heading'><div><span class='eyebrow'>5 · Review / service</span><h2>Review with the client</h2><p>Explain terms in plain language, confirm understanding, then create a fictional confirmation.</p></div><button class='link-button' data-info='review'>Review rule sources</button></div>~0~~1~~2~<div class='screen-actions'><button class='secondary-button' data-back>← Back to product fit</button>~3~</div>",
     card,confirmation,explainer("Sources used in this review","Each source is labeled by type. Public sources inform the learning context; fictional bank rules and product terms are simulation data.",check.sourceIds),action);
 }
 function wireCommon() { root.querySelectorAll("[data-back]").forEach((b)=>b.addEventListener("click",()=>go(Math.max(1,state.step-1)))); }
@@ -305,6 +329,6 @@ function wireReview() {
   root.querySelector("#restart-variation")?.addEventListener("click",()=>start(state.scenarioId));
   root.querySelector("#restart-new")?.addEventListener("click",()=>{state=null;render();});
 }
-restartButton.addEventListener("click",()=>{state=null;explanationOpen=false;render();});
+restartButton.addEventListener("click",()=>{state=null;activeInfo=null;render();});
 render();
 
