@@ -28,10 +28,10 @@ export function evaluate(state) {
   if (state.identityResult === "Follow-up required" || (followUpRequired && !state.enhancedReviewCompleted)) identityStatus = "follow-up";
   const calculatedNetWorth = Number(f.totalAssets) - Number(f.liabilities);
   const needsPresent = Boolean(f.goal && Number(f.horizonMonths) > 0 && f.riskTolerance && riskRank[f.riskTolerance] &&
-    f.riskCapacity && riskRank[f.riskCapacity] && f.investmentKnowledge && f.investmentKnowledge !== "Unknown" &&
+    f.investmentKnowledge && f.investmentKnowledge !== "Unknown" &&
     String(f.annualIncome ?? "").trim() !== "" && Number(f.annualIncome) >= 0 &&
     String(f.totalAssets ?? "").trim() !== "" && Number(f.totalAssets) >= 0 &&
-    String(f.financialAssets ?? "").trim() !== "" && Number(f.financialAssets) >= 0 &&
+    String(f.financialAssets ?? "").trim() !== "" && Number(f.financialAssets) >= 0 && Number(f.financialAssets) <= Number(f.totalAssets) &&
     String(f.liabilities ?? "").trim() !== "" && Number(f.liabilities) >= 0);
   // A transparent, fictional training signal: very concentrated exposure or
   // negative net worth lowers financial capacity; moderate concentration caps
@@ -45,10 +45,8 @@ export function evaluate(state) {
   const moderateConcentration = !highConcentration && ((investableAssets > 0 && amount / investableAssets >= 0.25) ||
     (calculatedNetWorth > 0 && amount / calculatedNetWorth >= 0.25) || (income > 0 && amount / income >= 0.25));
   const financialCapacitySignal = highConcentration ? "Low" : moderateConcentration ? "Moderate" : "High";
-  const assessedCapacity = riskRank[f.riskCapacity] ? f.riskCapacity : "Needs discussion";
-  const effectiveCapacity = riskRank[assessedCapacity]
-    ? (riskRank[assessedCapacity] <= riskRank[financialCapacitySignal] ? assessedCapacity : financialCapacitySignal)
-    : "Needs discussion";
+  const effectiveCapacity = financialCapacitySignal;
+  const knowledgeDisclosureRequired = f.investmentKnowledge === "Limited" && !state.knowledgeDisclosureConfirmed;
   let riskProfile = "Needs discussion";
   let riskProfileLimiter = "";
   if (riskRank[f.riskTolerance] && riskRank[effectiveCapacity]) {
@@ -57,7 +55,7 @@ export function evaluate(state) {
       riskProfileLimiter = "Limited by willingness to accept loss";
     } else if (riskRank[effectiveCapacity] < riskRank[f.riskTolerance]) {
       riskProfile = effectiveCapacity;
-      riskProfileLimiter = "Limited by the lower of the advisor's capacity assessment and the fictional financial concentration signal";
+      riskProfileLimiter = "Limited by the fictional financial capacity assessment";
     } else {
       riskProfile = f.riskTolerance;
       riskProfileLimiter = "Tolerance and capacity are aligned";
@@ -81,20 +79,20 @@ export function evaluate(state) {
     reasons.push("The proposed amount exceeds the client's stated financial assets. Clarify the funding source or correct the client information before assessing a product; do not change facts just to pass this check.");
     sourceIds.push("SRC-CIRO-RISK-PROFILE", "SRC-BANK-TRAINING-RULES");
   }
+  if (knowledgeDisclosureRequired) {
+    decisionStatus = "needs-information";
+    reasons.push("With limited investment knowledge, the advisor must complete the required client disclosure before product comparison or selection.");
+    sourceIds.push("SRC-CIRO-MFD-KYC", "SRC-BANK-TRAINING-RULES");
+  }
   if (selected && selected.type === "Mutual fund") {
     sourceIds = [...new Set([...sourceIds, "SRC-CIRO-MFD-KYC", "SRC-CIRO-MFD-SUIT", "SRC-CIRO-RISK-PROFILE"])];
     if (!needsPresent || !state.mutualFundKycConfirmed) {
       decisionStatus = "needs-information";
       reasons.push("Complete and confirm the mutual-fund KYC conversation before considering a recommendation.");
     }
-    if (f.investmentKnowledge === "Limited" && !state.mutualFundUnderstandingConfirmed) {
-      decisionStatus = "needs-information";
-      reasons.push("Pause to explain that mutual-fund values can fall and returns are not guaranteed. Continue only after the client can describe those risks in their own words.");
-      sourceIds.push("SRC-BANK-TRAINING-RULES");
-    }
     if (riskProfile === "Low") {
       decisionStatus = "training-mismatch";
-      reasons.push("The overall risk profile is low, limited by " + (riskProfileLimiter === "Limited by willingness to accept loss" ? "the client's low willingness to accept loss" : "low financial capacity for loss") + ". This fictional Release 1 rule blocks mutual-fund choices and points to a lower-volatility deposit discussion.");
+      reasons.push("The overall risk profile is Low based on the client's risk tolerance and financial capacity. This fictional Release 1 rule blocks mutual-fund choices and points to a lower-volatility deposit discussion.");
       alternatives = ["GIC-CASH-1Y"];
       sourceIds.push("SRC-BANK-TRAINING-RULES");
     } else if (selected.id === "MF-BALANCED" && Number(f.horizonMonths) < selected.minimumHorizonMonths) {
@@ -109,16 +107,28 @@ export function evaluate(state) {
       sourceIds.push("SRC-BANK-TRAINING-RULES");
     }
   }
-  if (selected && selected.id === "GIC-LOCK-3Y" &&
-      (Number(f.horizonMonths) < selected.termMonths ||
-        (Number(f.liquidityNeedMonths) <= selected.termMonths && Number(f.liquidityNeedAmount) > 0))) {
+  if (selected && selected.id === "GIC-LOCK-3Y" && Number(f.horizonMonths) < selected.termMonths) {
     decisionStatus = "training-mismatch";
-    reasons.push("The client's time horizon or stated liquidity need is earlier than this non-redeemable GIC's 36-month maturity.");
+    reasons.push("The client's " + f.horizonMonths + "-month investment horizon is shorter than this non-redeemable GIC's 36-month term.");
+    alternatives = ["GIC-CASH-1Y"];
+    sourceIds.push("SRC-BANK-TRAINING-RULES", "SRC-BANK-GIC-TERMS");
+  }
+  if (selected && selected.id === "GIC-LOCK-3Y" && Number(f.horizonMonths) >= selected.termMonths &&
+      productAmount(f, selected) <= 0) {
+    decisionStatus = "training-mismatch";
+    reasons.push("The full proposed amount is needed for the client's near-term liquidity reserve, leaving no amount for this three-year GIC. Choose a liquid option or adjust the amount after discussing the reserve.");
     alternatives = ["GIC-CASH-1Y"];
     sourceIds.push("SRC-BANK-TRAINING-RULES", "SRC-BANK-GIC-TERMS");
   }
   const orderReady = registrationStatus === "eligible" && fundingStatus === "ready" && identityStatus === "complete" &&
-    needsPresent && !financialReviewRequired && decisionStatus === "allowed" &&
+    needsPresent && !financialReviewRequired && !knowledgeDisclosureRequired && decisionStatus === "allowed" &&
     (!selected || selected.type !== "Mutual fund" || state.mutualFundKycConfirmed);
-  return { registrationStatus, fundingStatus, identityStatus, needsPresent, calculatedNetWorth, financialCapacitySignal, effectiveCapacity, riskProfile, riskProfileLimiter, financialReviewRequired, decisionStatus, selected, reasons, sourceIds: [...new Set(sourceIds)], alternatives, orderReady };
+  return { registrationStatus, fundingStatus, identityStatus, needsPresent, knowledgeDisclosureRequired, calculatedNetWorth, financialCapacitySignal, effectiveCapacity, riskProfile, riskProfileLimiter, financialReviewRequired, decisionStatus, selected, reasons, sourceIds: [...new Set(sourceIds)], alternatives, orderReady };
+}
+
+export function productAmount(facts, product) {
+  const total = Number(facts.investmentAmount) || 0;
+  if (product.id !== "GIC-LOCK-3Y" || Number(facts.liquidityNeedMonths) > product.termMonths) return total;
+  const reserve = Math.min(total, Number(facts.liquidityNeedAmount) || 0);
+  return Math.max(0, total - reserve);
 }

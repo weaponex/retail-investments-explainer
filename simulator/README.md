@@ -20,7 +20,7 @@ Open `http://127.0.0.1:4173`. The server listens on loopback only. There are no 
 
 Each journey carries fictional client facts through the account, identity, KYC, product, and review screens. Scenario rules block an unsuitable product selection and offer an alternative. Product rates, product terms, and bank procedures are fictional and labeled in the interface.
 
-The KYC step separates risk tolerance from advisor-assessed capacity, calculates net worth as total assets minus liabilities, and displays how proposed-amount concentration against investable assets, calculated net worth and income changes a fictional capacity signal. The lower of the advisor assessment and signal informs the practice profile. This transparent heuristic is a discussion aid, not a regulatory threshold or universal suitability formula. Investment knowledge and planning horizon shape product discussions. A proposed amount greater than reported financial assets triggers a factual follow-up. Product minimum horizons and these consistency gates are explicitly fictional training rules.
+The KYC step color-codes risk tolerance and financially derived risk capacity, marks the lower factor as the overall practice profile, and calculates net worth as total assets minus liabilities. Financial assets are constrained to be a subset of total assets. Limited investment knowledge requires a recorded advisor disclosure before product comparison. Near-term liquidity is reserved as accessible cash when the remaining amount is placed in a longer GIC; product horizons are checked against the client's investment horizon. Capacity thresholds, liquidity allocation, and product minimum horizons are fictional training rules, not regulatory standards.
 
 ## Boundaries and regulatory references
 

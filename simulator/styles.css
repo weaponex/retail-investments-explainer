@@ -93,11 +93,6 @@
 .risk-meter{height:7px;border-radius:8px;background:#e2e9ee;overflow:hidden}
 .risk-meter span{display:block;height:100%;border-radius:8px;background:#3e83ad}
 .risk-join{font-size:12px;font-weight:800;color:#536c7e;text-align:center}
-.overall-risk{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#eaf2f7;border:1px solid #cbdce7;border-radius:8px;padding:12px}
-.overall-risk span{font-size:13px}
-.overall-risk strong{font-size:17px;color:#153b5b}
-.overall-risk em{font-size:12px;color:#566d7d;font-style:normal}
-.risk-profile-map>.field-note{display:block;line-height:1.5;margin-top:10px}
 .financial-context .panel-heading{margin-bottom:10px}
 .financial-ratios{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:12px 0}
 .financial-ratios>div{display:flex;flex-direction:column;gap:5px;padding:10px;border:1px solid #dce5eb;border-radius:7px;background:#fff}
@@ -105,3 +100,19 @@
 .financial-ratios strong{font-size:15px}
 .financial-context>p{font-size:13px;line-height:1.5;color:#526a7b}
 @media(max-width:760px){.risk-dimensions{grid-template-columns:1fr}.risk-join{padding:2px}.financial-ratios{grid-template-columns:1fr}}
+.risk-profile-map .panel-heading{align-items:center;margin-bottom:12px}
+.risk-profile-map .panel-heading h3{font-size:18px;margin:0}
+.risk-dimensions{margin:0}
+.risk-dimensions .risk-tile{display:grid;gap:9px;min-height:112px}
+.risk-tile-heading{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.risk-tile-heading>span:first-child{font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:800}
+.risk-tile>strong{font-size:17px}
+.risk-tile.level-low{background:#fff0f0;border-color:#d98c8c;color:#842c2c}
+.risk-tile.level-moderate{background:#fff6e4;border-color:#d8b269;color:#795214}
+.risk-tile.level-high{background:#edf7f0;border-color:#88bd98;color:#28633b}
+.risk-tile.level-low .risk-meter span{width:33%;background:#c74545}
+.risk-tile.level-moderate .risk-meter span{width:66%;background:#c58a1c}
+.risk-tile.level-high .risk-meter span{width:100%;background:#34834d}
+.profile-marker{display:inline-block;border:1px solid currentColor;border-radius:999px;padding:3px 7px;font-size:10px!important;line-height:1.2;letter-spacing:0!important;text-transform:none!important;white-space:nowrap}
+.mandatory-disclosure{border:1px solid #c58a1c;background:#fff6e4;border-radius:8px;padding:13px}
+.mandatory-disclosure small{display:block;margin-top:5px}

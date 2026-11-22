@@ -1,7 +1,7 @@
 import { scenarioList } from "./scenarios.js";
 import { products, gicMaturityValue } from "./products.js";
 import { sourcesFor } from "./citations.js";
-import { evaluate } from "./rules.js";
+import { evaluate, productAmount } from "./rules.js";
 import { createSession, addTimeline } from "./session.js";
 
 const root = document.querySelector("#app");
@@ -33,14 +33,14 @@ function changeFact(key, value) {
     if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) age -= 1;
     state.facts.age = age;
   }
-  const profileKeys = ["riskTolerance","riskCapacity","investmentKnowledge","horizonMonths","liquidityNeedMonths","liquidityNeedAmount","goal","annualIncome","totalAssets","financialAssets","liabilities"];
+  const profileKeys = ["riskTolerance","investmentKnowledge","horizonMonths","liquidityNeedMonths","liquidityNeedAmount","goal","annualIncome","totalAssets","financialAssets","liabilities"];
   if (profileKeys.includes(key)) {
     state.selectedProductId = "";
     state.mutualFundKycConfirmed = false;
-    state.mutualFundUnderstandingConfirmed = false;
+    state.knowledgeDisclosureConfirmed = false;
   }
   if (["investmentAmount","taxResidency"].includes(key)) state.selectedProductId = "";
-  if (key === "investmentKnowledge") state.mutualFundUnderstandingConfirmed = false;
+  if (key === "investmentKnowledge") state.knowledgeDisclosureConfirmed = false;
   state.finished = false;
 }
 function canVisit(step) {
@@ -48,7 +48,7 @@ function canVisit(step) {
   if (step <= 1) return true;
   if (step === 2) return r.registrationStatus === "eligible";
   if (step === 3) return r.registrationStatus === "eligible" && r.identityStatus === "complete";
-  if (step === 4) return r.registrationStatus === "eligible" && r.identityStatus === "complete" && r.needsPresent && !r.financialReviewRequired;
+  if (step === 4) return r.registrationStatus === "eligible" && r.identityStatus === "complete" && r.needsPresent && !r.financialReviewRequired && !r.knowledgeDisclosureRequired;
   if (step === 5) return r.orderReady;
   return false;
 }
@@ -78,8 +78,8 @@ const infoTopics = {
   registration: { title: "Why these fields?", text: "Capture the client's identity, date of birth, SIN reference and tax residency for the TFSA application. CRA lists Canadian tax residency, age 18 or older and a valid SIN as opening criteria. A non-resident may keep an existing TFSA but cannot contribute tax-free. This practice screen uses fictional values and does not submit a registration.", sourceIds: ["SRC-CRA-TFSA-OPEN", "SRC-CRA-TFSA-NONRESIDENT"] },
   funding: { title: "Contribution room and funding", text: "A TFSA contribution and a direct TFSA-to-TFSA transfer are different routes. Contribution room depends on the individual's account and contribution history; this simulator neither calculates it nor checks CRA records. For the cash contribution scenario, confirm the client's reported room before recording a simulated order.", sourceIds: ["SRC-CRA-TFSA-ROOM", "SRC-CRA-TFSA-OPEN", "SRC-CRA-TFSA-NONRESIDENT"] },
   identity: { title: "Identity and AML checks", text: "Select an identity-verification method that fits the fictional scenario, then record its authored result. FINTRAC's available methods and related obligations depend on the reporting entity and circumstances. PEP/HIO or third-party answers trigger the practice follow-up here; they are not automatic reasons to refuse service. Nothing is verified externally.", sourceIds: ["SRC-FINTRAC-ID", "SRC-FINTRAC-PEP-HIO"] },
-  kyc: { title: "Why collect KYC?", text: "Risk tolerance is willingness to accept loss; risk capacity is financial ability to absorb loss. CIRO guidance says to assess them separately and consider financial circumstances, liquidity, goals, time horizon and the share of investments represented. This simulator calculates net worth as total assets minus liabilities and displays a fictional concentration signal based on the proposed amount relative to financial assets, net worth and income. The signal is a discussion aid, not a regulatory threshold or substitute for advisor judgment. The overall practice profile uses the lower of tolerance and applied capacity. Investment knowledge informs product explanations and further inquiry.", sourceIds: ["SRC-CIRO-MFD-KYC", "SRC-CIRO-MFD-SUIT", "SRC-CIRO-RISK-PROFILE", "SRC-BANK-TRAINING-RULES"] },
-  productFit: { title: "How are options checked?", text: "Each option is checked against the account, risk profile, investment horizon, liquidity needs and proposed amount relative to reported financial assets. Net worth is calculated from total assets minus liabilities. A fictional concentration signal uses the proposed amount relative to financial assets, net worth and income to inform the applied practice capacity. It is a discussion aid, not a regulatory threshold. Amber cards expose mismatches; product horizons and amount checks are fictional training rules.", sourceIds: ["SRC-CIRO-MFD-SUIT", "SRC-CIRO-RISK-PROFILE", "SRC-BANK-TRAINING-RULES"] },
+  kyc: { title: "How capacity is assessed", text: "Risk tolerance is willingness to accept loss; risk capacity is financial ability to absorb loss. CIRO guidance says to consider financial circumstances, liquidity, goals, time horizon and the share of investments represented. This simplified exercise derives capacity from proposed investment concentration against financial assets available to invest, calculated net worth (total assets minus liabilities), and annual income. At or above 25% of any one value caps the fictional capacity level at Moderate; an amount above any one value or negative net worth sets it to Low. These thresholds are made up for training, not regulatory standards. An advisor must assess the complete picture and investigate inconsistencies. The overall practice profile is the lower of willingness and capacity. Limited investment knowledge requires the advisor disclosure checkbox before the learner can continue.", sourceIds: ["SRC-CIRO-MFD-KYC", "SRC-CIRO-MFD-SUIT", "SRC-CIRO-RISK-PROFILE", "SRC-BANK-TRAINING-RULES"] },
+  productFit: { title: "How are options checked?", text: "Each option is checked against the account, risk profile, investment horizon and liquidity needs. For the three-year GIC, the scenario holds the stated near-term liquidity amount as accessible cash and places only the remainder in the GIC. A 48-month horizon can fit the 36-month term; the GIC card shows the amount invested and cash held aside. If the horizon is shorter, it remains a mismatch. These product horizons and liquidity allocations are fictional practice rules.", sourceIds: ["SRC-CIRO-MFD-SUIT", "SRC-CIRO-RISK-PROFILE", "SRC-BANK-TRAINING-RULES"] },
   review: { title: "Review and service", text: "Explain the product's fictional terms, access, maturity date and value, fees, and what is or is not guaranteed. Confirm the client understands before recording the practice order. The simulator records only an in-memory event; it does not open an account or execute a transaction.", sourceIds: ["SRC-BANK-GIC-TERMS", "SRC-CIRO-MFD-SUIT"] }
 };
 function explainer() { return ""; }
@@ -111,6 +111,7 @@ function statusPanel() {
   if (r.registrationStatus !== "eligible") add(state.facts.taxResidency === "Non-resident" ? "This is a new TFSA application. CRA opening criteria require Canadian tax residency; a non-resident may keep an existing TFSA but cannot contribute tax-free. This new-account journey is blocked. Select Canada only if the client is a Canadian tax resident." : r.registrationStatus === "ineligible" ? "TFSA opening eligibility check failed. Review the client's age and required account details." : "Complete the required account details. Confirm name, date of birth, Ontario address, tax residency and SIN reference.", 1, "Review account eligibility");
   if (r.identityStatus !== "complete" && r.registrationStatus === "eligible") add(r.identityStatus === "follow-up" ? "Identity / AML follow-up is incomplete. Complete the prompted follow-up and record a passed scenario result." : "Choose an identity method and record a passed scenario result before continuing.", 2, "Open identity / AML");
   if (!r.needsPresent && r.identityStatus === "complete") add("Complete the client needs and financial profile before reviewing products.", 3, "Open needs / KYC");
+  if (r.knowledgeDisclosureRequired && r.identityStatus === "complete") add("Limited investment knowledge requires the advisor disclosure before product comparison.", 3, "Complete advisor disclosure");
   if (r.fundingStatus !== "ready") add("Contribution room or residency needs confirmation before a cash contribution can be simulated.", 1, "Review funding details");
   if (r.financialReviewRequired && !r.selected) add("The proposed amount is greater than the financial assets reported. Reconcile the client facts or funding amount before product review.", 3, "Review client finances");
   if (r.selected && r.decisionStatus !== "allowed") add(r.reasons.join(" "), r.financialReviewRequired ? 3 : 4, r.financialReviewRequired ? "Review client finances" : "Review product fit");
@@ -131,7 +132,7 @@ function renderShell(content) {
     const events = state.timeline.slice(-9).map((e) => fmt("<li class='timeline-event ~0~'><span class='timeline-dot'></span><div><span class='event-type'>~1~</span><p>~2~</p><time>~3~</time></div></li>",
       esc(e.kind), esc(e.kind), esc(e.text), new Intl.DateTimeFormat("en-CA", { hour:"numeric", minute:"2-digit" }).format(e.time))).join("");
     timeline = fmt("<aside class='timeline-card'>~0~<div class='panel-heading'><div><span class='eyebrow'>Scenario record</span><h2>Client / advisor timeline</h2></div><span class='count-pill'>~1~ events</span></div><ol class='timeline-list'>~2~</ol><div class='fact-mini'><strong>Client facts carried forward</strong><dl><div><dt>Goal</dt><dd>~3~</dd></div><div><dt>Horizon</dt><dd>~4~</dd></div><div><dt>Risk tolerance</dt><dd>~5~</dd></div><div><dt>Risk capacity</dt><dd>~6~</dd></div><div><dt>Knowledge</dt><dd>~7~</dd></div><div><dt>Liquidity</dt><dd>~8~</dd></div></dl></div></aside>",
-      statusPanel(), state.timeline.length, events, esc(state.facts.goal), horizon(state.facts.horizonMonths), esc(state.facts.riskTolerance), esc(state.facts.riskCapacity), esc(state.facts.investmentKnowledge),
+      statusPanel(), state.timeline.length, events, esc(state.facts.goal), horizon(state.facts.horizonMonths), esc(state.facts.riskTolerance), esc(result().effectiveCapacity), esc(state.facts.investmentKnowledge),
       state.facts.liquidityNeedAmount ? money(state.facts.liquidityNeedAmount) + " by month " + esc(state.facts.liquidityNeedMonths) : "No near-term need reported");
   }
   root.innerHTML = progress + fmt("<div class='~0~'><section class='main-panel'>~1~</section>~2~</div>", state ? "workspace-grid" : "", content, timeline) + (activeInfo ? infoModal() : "");
@@ -202,35 +203,33 @@ function identityView() {
 }
 function needsView() {
   const f=state.facts,r=result();
+  const knowledgeDisclosure=f.investmentKnowledge==="Limited"
+    ? "<label class='check-label confirm-check mandatory-disclosure'><input id='knowledge-disclosure' type='checkbox' required "+(state.knowledgeDisclosureConfirmed?"checked":"")+"> I explained the product features, risks, costs and uncertainties in language the client can understand. <small>Required advisor action for this scenario before product comparison; this does not establish suitability.</small></label>"
+    : "";
   let fields=[
     ["Primary goal","goal","text"],["Investment time horizon (months)","horizonMonths","number"],["When might money be needed? (months)","liquidityNeedMonths","number"],["Amount that may be needed","liquidityNeedAmount","number"],
     ["Annual income (fictional)","annualIncome","number"],["Total assets (fictional)","totalAssets","number"],["Financial assets available to invest (fictional)","financialAssets","number"],["Liabilities (fictional)","liabilities","number"]
-  ].map(([label,key,type])=>fmt("<label>~0~<input data-fact='~1~' type='~2~' value='~3~'></label>",label,key,type,esc(f[key]??""))).join("");
+  ].map(([label,key,type])=>fmt("<label>~0~<input data-fact='~1~' type='~2~' min='0' ~3~ value='~4~'>~5~</label>",label,key,type,key==="financialAssets"?"max='"+esc(f.totalAssets)+"'":"",esc(f[key]??""),key==="financialAssets"?"<small>Must be no greater than total assets.</small>":"")).join("");
   const netWorthValue=String(f.totalAssets??"").trim()!==""&&String(f.liabilities??"").trim()!==""?money(r.calculatedNetWorth):"Enter assets and liabilities";
   const netWorthField=fmt("<label>Calculated net worth<input type='text' value='~0~' readonly><small>Total assets minus liabilities.</small></label>",esc(netWorthValue));
   fields+=netWorthField;
   const select=(label,key,values)=>fmt("<label>~0~<select data-fact='~1~'>~2~</select></label>",label,key,options(values,f[key]));
-  const levelWidth=(level)=>({Low:33,Moderate:66,High:100}[level]||0);
-  const riskSummary=fmt("<section class='risk-profile-map'><h3>How the risk answers fit together</h3><div class='risk-dimensions'><article><span>Willingness</span><strong>Risk tolerance · ~0~</strong><p>How comfortable is the client with seeing losses or value changes?</p><div class='risk-meter'><span style='width:~1~%'></span></div></article><div class='risk-join' aria-hidden='true'>Both inform ↓</div><article><span>Financial ability</span><strong>Applied capacity · ~2~</strong><p>Advisor assessment: ~3~. Financial concentration signal: ~4~. Use the lower to challenge this practice profile.</p><div class='risk-meter'><span style='width:~5~%'></span></div></article></div><div class='overall-risk'><span>Overall practice profile</span><strong>~6~</strong><em>~7~</em></div><p class='field-note'>Fictional rule: an amount at or above 25% of financial assets, calculated net worth or annual income caps the signal at Moderate. An amount above any one of those values, or negative net worth, sets it to Low. The lower of tolerance and applied capacity sets this practice profile. These are discussion prompts, not regulatory thresholds or a substitute for advisor judgment.</p></section>",
-    esc(f.riskTolerance),levelWidth(f.riskTolerance),esc(r.effectiveCapacity),esc(f.riskCapacity),esc(r.financialCapacitySignal),levelWidth(r.effectiveCapacity),esc(r.riskProfile),esc(r.riskProfileLimiter));
-  const amount=Number(f.investmentAmount)||0,assets=Number(f.financialAssets)||0,netWorth=r.calculatedNetWorth||0,income=Number(f.annualIncome)||0;
-  const share=(part,total)=>total>0?((part/total)*100).toFixed(1)+"%":"Not available";
+  const riskRank={Low:1,Moderate:2,High:3};
+  const levelClass=(level)=>String(level||"low").toLowerCase();
+  const toleranceMarker=riskRank[f.riskTolerance]<=riskRank[r.effectiveCapacity]?"<span class='profile-marker'>Overall practice profile</span>":"";
+  const capacityMarker=riskRank[r.effectiveCapacity]<=riskRank[f.riskTolerance]?"<span class='profile-marker'>Overall practice profile</span>":"";
+  const riskSummary=fmt("<section class='risk-profile-map'><div class='panel-heading'><h3>Risk profile</h3><button type='button' class='text-button' data-info='kyc'>How capacity is assessed</button></div><div class='risk-dimensions'><article class='risk-tile level-~0~'><div class='risk-tile-heading'><span>Willingness</span>~1~</div><strong>Risk tolerance · ~2~</strong><div class='risk-meter'><span></span></div></article><div class='risk-join' aria-hidden='true'>↓</div><article class='risk-tile level-~3~'><div class='risk-tile-heading'><span>Financial ability</span>~4~</div><strong>Risk capacity · ~5~</strong><div class='risk-meter'><span></span></div></article></div></section>",
+    levelClass(f.riskTolerance),toleranceMarker,esc(f.riskTolerance),levelClass(r.effectiveCapacity),capacityMarker,esc(r.effectiveCapacity));
   const financialAlert=r.financialReviewRequired?callout("Reconcile the proposed amount","The amount to invest is greater than the client's stated financial assets. Clarify the source or correct the client record before product review; do not change facts just to pass the check.","warning"):"";
-  const financialContext=fmt("<section class='financial-context'><div class='panel-heading'><div><span class='eyebrow'>Financial capacity context</span><h3>Why the financial numbers matter</h3></div><button type='button' class='text-button' data-info='kyc'>How capacity is assessed</button></div><div class='financial-ratios'><div><span>Proposed amount / financial assets</span><strong>~0~ · ~1~</strong></div><div><span>Proposed amount / calculated net worth</span><strong>~2~ · ~3~</strong></div><div><span>Proposed amount / annual income</span><strong>~4~ · ~5~</strong></div><div><span>Liabilities</span><strong>~6~</strong></div><div><span>Financial concentration signal · fictional</span><strong>~7~</strong></div></div><p>The signal responds to proposed-amount concentration against financial assets, calculated net worth and annual income, using the fictional thresholds shown above. The advisor still assesses the full picture.</p>~8~</section>",
-    money(amount),share(amount,assets),money(netWorth),share(amount,netWorth),money(income),share(amount,income),money(f.liabilities),esc(r.financialCapacitySignal),financialAlert);
-  const conflict=f.riskTolerance!==r.effectiveCapacity||f.riskCapacity!==r.financialCapacitySignal?callout("Discuss the capacity signal","Tolerance is willingness; capacity is ability. The advisor assessment is "+f.riskCapacity.toLowerCase()+", while the fictional financial signal is "+r.financialCapacitySignal.toLowerCase()+"; the applied capacity is "+r.effectiveCapacity.toLowerCase()+". Check the inputs and discuss why the factors differ before documenting the profile.","warning"):"";
-  const knowledgeNote=callout("What investment knowledge changes","Knowledge helps determine how to explain product features, costs and risks and whether more discussion is needed. Limited knowledge does not automatically make every investment unsuitable; in this fictional mutual-fund path, it triggers a risk teach-back before proceeding.","info");
   const horizonNote=callout("Why investment time horizon matters","The horizon is when the client expects to use the money, not simply how long they could hold an investment. It informs liquidity and whether a maturity date or market-risk product fits. The minimum horizons on these fund cards are fictional practice assumptions.","info");
-  const teachback=f.investmentKnowledge==="Limited"?"<label class='check-label confirm-check'><input id='mf-understanding' type='checkbox' "+(state.mutualFundUnderstandingConfirmed?"checked":"")+"> After an explanation, client can describe that mutual funds can lose value and returns are not guaranteed. <small>Scenario teach-back; this is not a waiver or guarantee of suitability.</small></label>":"";
-  return fmt("<div class='screen-heading'><div><span class='eyebrow'>4 · Understand the client</span><h2>Discuss needs and KYC</h2><p>Connect the client's goals, time horizon, knowledge, finances and risk profile before comparing products.</p></div><button class='link-button' data-info='kyc'>Why collect KYC?</button></div><div class='client-quote'><span>Client says</span><blockquote>“~0~”</blockquote></div><div class='form-grid'>~1~~2~~3~~4~</div>~5~~6~~7~~8~~9~~10~~11~~12~<div class='screen-actions'><button class='secondary-button' data-back>← Back to identity</button><button class='primary-button' id='to-products'>Review product fit →</button></div>",
+  return fmt("<div class='screen-heading'><div><span class='eyebrow'>4 · Understand the client</span><h2>Discuss needs and KYC</h2><p>Connect the client's goals, time horizon, knowledge, finances and risk profile before comparing products.</p></div><button class='link-button' data-info='kyc'>Why collect KYC?</button></div><div class='client-quote'><span>Client says</span><blockquote>“~0~”</blockquote></div><div class='form-grid'>~1~~2~~3~</div>~4~~5~~6~~7~~8~~9~<div class='screen-actions'><button class='secondary-button' data-back>← Back to identity</button><button class='primary-button' id='to-products'>Review product fit →</button></div>",
     esc(activeScenario().prompts.needs),fields,
     select("Investment knowledge","investmentKnowledge",["Limited","Basic","Good","Extensive"]),
     select("Risk tolerance · willingness to accept loss","riskTolerance",["Low","Moderate","High","Unknown"]),
-    select("Advisor assessment · risk capacity","riskCapacity",["Low","Moderate","High","Unknown"]),
-    riskSummary,financialContext,
-    "<label class='check-label confirm-check'><input id='kyc-confirm' type='checkbox' "+(state.mutualFundKycConfirmed?"checked":"")+"> Client confirms the recorded mutual-fund KYC facts <small>Scenario confirmation only.</small></label>",
-    conflict,knowledgeNote,horizonNote,teachback,
-    explainer("KYC, risk profile and suitability","CIRO KYC and suitability guidance requires considering the client's financial circumstances, needs and objectives, investment knowledge, risk profile and time horizon. Tolerance and capacity are distinct; capacity should be assessed in relation to finances, liquidity, objectives, horizon and the share of investments represented. Conflicts should be reconciled and documented. These product thresholds remain fictional learning rules.",["SRC-CIRO-MFD-KYC","SRC-CIRO-MFD-SUIT","SRC-CIRO-RISK-PROFILE"]));
+    riskSummary,financialAlert,knowledgeDisclosure,
+    "<label class='check-label confirm-check'><input id='kyc-confirm' type='checkbox' "+(state.mutualFundKycConfirmed?"checked":"")+"> Client confirms the recorded KYC facts <small>Scenario confirmation only.</small></label>",
+    horizonNote,
+    explainer("KYC, risk profile and suitability","CIRO KYC and suitability guidance requires considering the client's financial circumstances, needs and objectives, investment knowledge, risk profile and time horizon. Tolerance and capacity are distinct. The capacity model and its fictional thresholds are explained in the advisor reference modal.",["SRC-CIRO-MFD-KYC","SRC-CIRO-MFD-SUIT","SRC-CIRO-RISK-PROFILE"]));
 }
 function productCard(p, check) {
   const selected=state.selectedProductId===p.id, alt=check.alternatives.includes(p.id);
@@ -239,8 +238,10 @@ function productCard(p, check) {
   const needsInformation=productCheck.decisionStatus==="needs-information";
   const fitHint=mismatch?fmt("<div class='product-fit-hint warning'><strong>Scenario mismatch</strong><span>~0~</span></div>",esc(productCheck.reasons.join(" "))):needsInformation?fmt("<div class='product-fit-hint warning'><strong>Action required before considering</strong><span>~0~</span></div>",esc(productCheck.reasons.join(" "))):"";
   const maturity=maturityDate(p);
+  const productInvestment=productAmount(state.facts,p);
+  const reserve=Math.max(0,(Number(state.facts.investmentAmount)||0)-productInvestment);
   const details=p.type==="GIC"
-    ? fmt("<dl class='product-details'><div><dt>Fictional rate</dt><dd>~0~% per year</dd></div><div><dt>Term / maturity</dt><dd>~1~ year~2~ · ~3~</dd></div><div><dt>Illustrative maturity value</dt><dd>~4~</dd></div><div><dt>Access</dt><dd>~5~</dd></div></dl>",(p.rate*100).toFixed(2),p.termMonths/12,p.termMonths>12?"s":"",maturity,money(gicMaturityValue(p,Number(state.facts.investmentAmount))),esc(p.redemption))
+    ? fmt("<dl class='product-details'><div><dt>Fictional rate</dt><dd>~0~% per year</dd></div><div><dt>Term / maturity</dt><dd>~1~ year~2~ · ~3~</dd></div><div><dt>Product amount</dt><dd>~4~</dd></div><div><dt>Illustrative maturity value</dt><dd>~5~</dd></div>~6~<div><dt>Access</dt><dd>~7~</dd></div></dl>",(p.rate*100).toFixed(2),p.termMonths/12,p.termMonths>12?"s":"",maturity,money(productInvestment),money(gicMaturityValue(p,productInvestment)),reserve>0?fmt("<div><dt>Held as accessible cash</dt><dd>~0~</dd></div>",money(reserve)):"",esc(p.redemption))
     : fmt("<dl class='product-details'><div><dt>Objective</dt><dd>~0~</dd></div><div><dt>Annual fee (fictional)</dt><dd>~1~%</dd></div><div><dt>Practice planning horizon</dt><dd>~2~</dd></div><div><dt>Return</dt><dd>Not guaranteed; value can fall</dd></div><div><dt>Access</dt><dd>~3~</dd></div></dl>",p.id==="MF-CONSERVATIVE"?"Fixed income":"Balanced growth and income",(p.annualFee*100).toFixed(2),horizon(p.minimumHorizonMonths),esc(p.redemption));
   return fmt("<article class='product-card ~0~ ~1~ ~2~'><div class='product-top'><span class='product-type'>~3~</span><span class='risk-badge'>~4~ risk</span></div><h3>~5~</h3><p>~6~</p>~7~~8~<button class='~9~' data-product='~10~'>~11~</button></article>",selected?"selected":"",alt?"alternative":"",mismatch?"mismatch":"",esc(p.type),esc(p.risk),esc(p.name),esc(p.summary),fitHint,details,selected?"selected-button":"secondary-button",esc(p.id),selected?"Selected":alt?"Choose suggested alternative":mismatch?"Select to review mismatch":"Select product");
 }
@@ -253,7 +254,7 @@ function productView() {
     notice=fmt("<section class='decision-box warning' role='alert'><div class='decision-label'>Action required</div><h3>Complete the required conversation before proceeding.</h3><ul>~0~</ul>~1~</section>",check.reasons.map((x)=>fmt("<li>~0~</li>",esc(x))).join(""),sourceCards(check.sourceIds));
   } else if(p) notice=fmt("<section class='decision-box success'><div class='decision-label'>Scenario check passed</div><h3>~0~ can proceed to client review.</h3><p>This reflects the configured scenario rules; it is not personalized advice.</p>~1~</section>",esc(p.name),sourceCards(check.sourceIds));
   const summary=fmt("<div class='client-summary-strip'><div><small>Goal</small><strong>~0~</strong></div><div><small>Horizon</small><strong>~1~</strong></div><div><small>Risk tolerance / capacity</small><strong>~2~ / ~3~</strong></div><div><small>Liquidity need</small><strong>~4~</strong></div><button class='text-button' id='edit-needs'>Edit client facts</button></div>",
-    esc(state.facts.goal),horizon(state.facts.horizonMonths),esc(state.facts.riskTolerance),esc(state.facts.riskCapacity),state.facts.liquidityNeedAmount?money(state.facts.liquidityNeedAmount)+" in "+state.facts.liquidityNeedMonths+" mo.":"None reported");
+    esc(state.facts.goal),horizon(state.facts.horizonMonths),esc(state.facts.riskTolerance),esc(result().effectiveCapacity),state.facts.liquidityNeedAmount?money(state.facts.liquidityNeedAmount)+" in "+state.facts.liquidityNeedMonths+" mo.":"None reported");
   return fmt("<div class='screen-heading'><div><span class='eyebrow'>5 · Compare and discuss</span><h2>Product fit</h2><p>Options reflect the client profile. Amber cards show a mismatch or required conversation; selecting one explains the issue, but it cannot proceed to review.</p></div><button class='link-button' data-info='productFit'>How are options checked?</button></div>~0~<div class='product-grid'>~1~</div>~2~~3~<div class='screen-actions'><button class='secondary-button' data-back>← Back to needs / KYC</button><button class='primary-button' id='to-review' ~4~>Continue to client review →</button></div>",
     summary,products.filter((x)=>x.accountTypes.includes(state.accountType)).map((x)=>productCard(x,check)).join(""),
     p?notice:"<p class='field-note'>Select a product to see its scenario check.</p>",
@@ -261,20 +262,21 @@ function productView() {
     check.orderReady?"":"disabled");
 }
 function reviewView() {
-  const check=result(),p=check.selected,amount=Number(state.facts.investmentAmount)||0;
+  const check=result(),p=check.selected,amount=p?productAmount(state.facts,p):Number(state.facts.investmentAmount)||0;
   if (state.finished) {
     const facts=fmt("<ul class='recap-facts'><li>Goal: ~0~</li><li>Time horizon: ~1~</li><li>Risk tolerance / capacity: ~2~ / ~3~</li><li>Liquidity need: ~4~</li></ul>",
-      esc(state.facts.goal),horizon(state.facts.horizonMonths),esc(state.facts.riskTolerance),esc(state.facts.riskCapacity),
+      esc(state.facts.goal),horizon(state.facts.horizonMonths),esc(state.facts.riskTolerance),esc(check.effectiveCapacity),
       state.facts.liquidityNeedAmount?money(state.facts.liquidityNeedAmount)+" by month "+esc(state.facts.liquidityNeedMonths):"No near-term need reported");
     return fmt("<div class='screen-heading'><div><span class='eyebrow'>Scenario complete</span><h2>Rules and choices recap</h2><p>Review the fictional client facts and the sources shown during the conversation.</p></div></div><section class='review-card'><h3>Client facts used</h3>~0~<h3>Selected product</h3><p>~1~ · ~2~</p><h3>Training result</h3><p>~3~</p><h3>Source references</h3>~4~</section><div class='screen-actions'><button class='secondary-button' id='restart-variation'>Restart this variation</button><button class='primary-button' id='restart-new'>Choose another scenario</button></div>",
       facts,esc(p ? p.name : "None"),money(amount),esc(check.reasons.join(" ") || "The configured scenario checks allowed the selection."),sourceCards(check.sourceIds));
   }
   let productInfo="";
   if(p && p.type==="GIC"){
-    productInfo=fmt("<div><dt>Illustrative maturity date</dt><dd>~0~</dd></div><div><dt>Illustrative value at maturity</dt><dd>~1~</dd></div><div><dt>Early redemption</dt><dd>~2~</dd></div>",
-      maturityDate(p),money(gicMaturityValue(p,amount)),esc(p.redemption));
+    const reserve=Math.max(0,(Number(state.facts.investmentAmount)||0)-amount);
+    productInfo=fmt("<div><dt>Illustrative maturity date</dt><dd>~0~</dd></div><div><dt>Illustrative value at maturity</dt><dd>~1~</dd></div>~2~<div><dt>Early redemption</dt><dd>~3~</dd></div>",
+      maturityDate(p),money(gicMaturityValue(p,amount)),reserve>0?fmt("<div><dt>Held as accessible cash</dt><dd>~0~</dd></div>",money(reserve)):"",esc(p.redemption));
   } else if(p) productInfo=fmt("<div><dt>Annual fee</dt><dd>~0~% (fictional)</dd></div><div><dt>Return</dt><dd>Not guaranteed; value can fall</dd></div><div><dt>Risk</dt><dd>~1~</dd></div>",(p.annualFee*100).toFixed(2),esc(p.risk));
-  const card=p?fmt("<section class='review-card'><div class='review-title'><div><span class='product-type'>~0~</span><h3>~1~</h3></div><span class='simulation-tag'>Simulation only</span></div><dl class='review-grid'><div><dt>Account</dt><dd>~2~</dd></div><div><dt>Funding method</dt><dd>~3~</dd></div><div><dt>Amount</dt><dd>~4~</dd></div>~5~</dl><div class='client-quote compact'><span>Client prompt</span><blockquote>“~6~”</blockquote></div><label class='check-label confirm-check'><input id='review-confirm' type='checkbox' ~7~> I reviewed the fictional terms and explained what is guaranteed and what is not.</label></section>",
+  const card=p?fmt("<section class='review-card'><div class='review-title'><div><span class='product-type'>~0~</span><h3>~1~</h3></div><span class='simulation-tag'>Simulation only</span></div><dl class='review-grid'><div><dt>Account</dt><dd>~2~</dd></div><div><dt>Funding method</dt><dd>~3~</dd></div><div><dt>Product amount</dt><dd>~4~</dd></div>~5~</dl><div class='client-quote compact'><span>Client prompt</span><blockquote>“~6~”</blockquote></div><label class='check-label confirm-check'><input id='review-confirm' type='checkbox' ~7~> I reviewed the fictional terms and explained what is guaranteed and what is not.</label></section>",
       esc(p.type),esc(p.name),esc(state.accountType),esc(state.fundingMethod),money(amount),productInfo,esc(activeScenario().prompts.review),state.reviewConfirmed?"checked":"")
     :callout("No product selected","Return to product fit and choose an option that passes the scenario check.","warning");
   const confirmation=state.transaction?fmt("<section class='confirmation-card'><span class='success-mark'>✓</span><div><span class='eyebrow'>Fictional confirmation</span><h3>Practice transaction recorded</h3><p>Reference <strong>~0~</strong> · ~1~ · ~2~</p><p>No account, order or money movement occurred.</p></div></section><section class='service-card'><h3>Continue the service conversation</h3><p>Discuss the next service checkpoint, product maturity or redemption timing, and when client facts may need review.</p><button class='secondary-button' id='service-event'>Add service note to timeline</button></section>",esc(state.transaction.reference),esc(state.transaction.productName),money(state.transaction.amount)):"";
@@ -315,12 +317,19 @@ function wireIdentity() {
 }
 function wireNeeds() {
   root.querySelectorAll("[data-fact]").forEach((c)=>c.addEventListener("change",()=>{
-    const k=c.dataset.fact;changeFact(k,c.type==="number"?Number(c.value):c.value);
+    const k=c.dataset.fact,value=c.type==="number"?Number(c.value):c.value;
+    if(k==="financialAssets"&&value>Number(state.facts.totalAssets)){
+      addEvent("rule","Financial assets cannot exceed total assets. Correct the client figures before continuing.");render();return;
+    }
+    if(k==="totalAssets"&&value<Number(state.facts.financialAssets)){
+      addEvent("rule","Total assets cannot be lower than financial assets. Correct the client figures before continuing.");render();return;
+    }
+    changeFact(k,value);
     addEvent("advisor","Updated client KYC fact: "+k+".");render();
   }));
   root.querySelector("#kyc-confirm").addEventListener("change",(e)=>{state.mutualFundKycConfirmed=e.target.checked;addEvent("client",e.target.checked?"Client confirmed the fictional KYC summary.":"Client confirmation removed.");render();});
-  root.querySelector("#mf-understanding")?.addEventListener("change",(e)=>{state.mutualFundUnderstandingConfirmed=e.target.checked;addEvent("client",e.target.checked?"Client completed the fictional mutual-fund risk teach-back.":"Mutual-fund risk teach-back removed.");render();});
-  root.querySelector("#to-products").addEventListener("click",()=>{if(!result().needsPresent){addEvent("rule","Complete the required client needs and financial profile before reviewing products.");render();return;}if(result().financialReviewRequired){addEvent("rule","The proposed amount exceeds stated financial assets. Reconcile the funding source or accurate client facts before product review.");render();return;}addEvent("rule","Client facts saved for product comparison.");go(4);});
+  root.querySelector("#knowledge-disclosure")?.addEventListener("change",(e)=>{state.knowledgeDisclosureConfirmed=e.target.checked;addEvent("advisor",e.target.checked?"Recorded mandatory investment knowledge disclosure.":"Removed mandatory investment knowledge disclosure.");render();});
+  root.querySelector("#to-products").addEventListener("click",()=>{if(!result().needsPresent){addEvent("rule","Complete the required client needs and financial profile before reviewing products.");render();return;}if(result().financialReviewRequired){addEvent("rule","The proposed amount exceeds stated financial assets. Reconcile the funding source or accurate client facts before product review.");render();return;}if(result().knowledgeDisclosureRequired){addEvent("rule","Complete the required advisor disclosure for limited investment knowledge before product comparison.");render();return;}addEvent("rule","Client facts saved for product comparison.");go(4);});
 }
 function wireProducts() {
   root.querySelectorAll("[data-product]").forEach((b)=>b.addEventListener("click",()=>{
@@ -335,7 +344,7 @@ function wireReview() {
   root.querySelector("#review-confirm")?.addEventListener("change",(e)=>{state.reviewConfirmed=e.target.checked;addEvent("advisor",e.target.checked?"Confirmed fictional client review.":"Removed review confirmation.");render();});
   root.querySelector("#simulate-order")?.addEventListener("click",()=>{
     if(!result().orderReady||!state.reviewConfirmed)return;
-    const p=result().selected;state.transaction={reference:"PRACTICE-"+Math.random().toString(36).slice(2,8).toUpperCase(),productName:p.name,amount:Number(state.facts.investmentAmount)};
+    const p=result().selected;state.transaction={reference:"PRACTICE-"+Math.random().toString(36).slice(2,8).toUpperCase(),productName:p.name,amount:productAmount(state.facts,p)};
     addEvent("transaction","Recorded simulated purchase "+state.transaction.reference+". No real transaction occurred.");render();
   });
   root.querySelector("#service-event")?.addEventListener("click",()=>{addEvent("service","Discussed a service checkpoint and fictional product terms.");render();});

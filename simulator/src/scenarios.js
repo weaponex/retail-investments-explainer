@@ -14,7 +14,7 @@ export const scenarioList = [
       fundingReference: "",
       reportedContributionRoom: "Unknown", goal: "Planned expense", horizonMonths: 18,
       liquidityNeedMonths: 12, liquidityNeedAmount: 5000, riskTolerance: "Low",
-      riskCapacity: "Moderate", investmentKnowledge: "Basic",
+      investmentKnowledge: "Basic",
       experience: "Some experience with savings products"
     },
     fundingMethod: "External cash contribution",
@@ -41,7 +41,7 @@ export const scenarioList = [
       fundingReference: "Fictional transfer ref TF-8042",
       reportedContributionRoom: "$14,000 (client-reported)", goal: "Long-term savings",
       horizonMonths: 96, liquidityNeedMonths: 60, liquidityNeedAmount: 0,
-      riskTolerance: "Low", riskCapacity: "Moderate", investmentKnowledge: "Limited",
+      riskTolerance: "Low", investmentKnowledge: "Limited",
       experience: "Has held savings accounts; no mutual fund experience"
     },
     fundingMethod: "Direct TFSA-to-TFSA transfer",
