@@ -92,7 +92,10 @@ export function evaluate(state) {
     }
     if (riskProfile === "Low") {
       decisionStatus = "training-mismatch";
-      reasons.push("The overall risk profile is Low based on the client's risk tolerance and financial capacity. This fictional Release 1 rule blocks mutual-fund choices and points to a lower-volatility deposit discussion.");
+      const horizonNote=Number(f.horizonMonths)>=selected.minimumHorizonMonths
+        ? " The client's "+f.horizonMonths+"-month horizon meets this fund's fictional "+selected.minimumHorizonMonths+"-month minimum, but the Low risk profile still blocks it because the client is not comfortable with potential investment losses."
+        : " The client's "+f.horizonMonths+"-month horizon is also shorter than this fund's fictional "+selected.minimumHorizonMonths+"-month minimum.";
+      reasons.push("The overall risk profile is Low based on the client's risk tolerance and financial capacity."+horizonNote+" This scenario points to a lower-volatility deposit discussion.");
       alternatives = ["GIC-CASH-1Y"];
       sourceIds.push("SRC-BANK-TRAINING-RULES");
     } else if (selected.id === "MF-BALANCED" && Number(f.horizonMonths) < selected.minimumHorizonMonths) {

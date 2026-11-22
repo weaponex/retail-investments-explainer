@@ -116,3 +116,7 @@
 .profile-marker{display:inline-block;border:1px solid currentColor;border-radius:999px;padding:3px 7px;font-size:10px!important;line-height:1.2;letter-spacing:0!important;text-transform:none!important;white-space:nowrap}
 .mandatory-disclosure{border:1px solid #c58a1c;background:#fff6e4;border-radius:8px;padding:13px}
 .mandatory-disclosure small{display:block;margin-top:5px}
+.field-with-help{min-width:0}
+.field-label-row{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px}
+.field-label-row label{margin:0}
+.inline-info-button{font-size:12px;white-space:nowrap;padding:0}
